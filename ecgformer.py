@@ -1,12 +1,5 @@
-import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-
-# ---------------------------------------------------------------------------
-# Encoder Block
-# ---------------------------------------------------------------------------
 
 class ECGformerEncoderBlock(nn.Module):
     """
@@ -14,7 +7,6 @@ class ECGformerEncoderBlock(nn.Module):
       LayerNorm → MultiHeadSelfAttention → residual
       LayerNorm → FFN (d_model→128→64→d_model) → residual
     """
-
     def __init__(self, d_model: int, num_heads: int, mlp_units: list, dropout: float):
         super().__init__()
 
@@ -43,18 +35,7 @@ class ECGformerEncoderBlock(nn.Module):
         x = x + self.ffn(self.norm2(x))
         return x
 
-
-# ---------------------------------------------------------------------------
-# ECGformer
-# ---------------------------------------------------------------------------
-
 class ECGformer(nn.Module):
-    """
-    Encoder-only Transformer for ECG arrhythmia classification.
-
-    Default args reproduce the paper's 36,301 parameter count.
-    Adjust input_length and num_classes for your dataset.
-    """
 
     def __init__(
         self,
@@ -102,49 +83,25 @@ class ECGformer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Args:
-            x: (batch, input_length) — zero-mean normalised ECG beat
-        Returns:
-            logits: (batch, num_classes)
+        x: (batch, input_length) — zero-mean normalised ECG beat
         """
         B, L = x.shape
-
-        # Step 1: trim the signal so it divides evenly into patches
-        # e.g. 187 timesteps with patch_size=11 → keep 187 timesteps,
-        # but 187//11=17 patches of 11 = 187, so no trimming needed here.
-        # if patch_size=10: 187//10=18 patches → keep only 180 timesteps
         num_patches = L // self.patch_size
         x = x[:, :num_patches * self.patch_size]
-        # x is now (32, 176) if patch_size=11, or (32, 180) if patch_size=10
-
-        # Step 2: reshape into patches
-        # view() splits the length dimension into (num_patches, patch_size)
         x = x.view(B, num_patches, self.patch_size)
-        # x is now (32, 17, 11) — 17 patches each containing 11 timesteps
-
-        # Step 3: project each patch to d_model
-        # input_proj is Linear(patch_size, d_model) = Linear(11, 128)
-        # it operates on the last dimension, so each patch vector of size 11
-        # becomes a token vector of size 128
         x = self.input_proj(x)
-        # x is now (32, 17, 128) — 17 tokens each of size d_model
-
-        # Step 4: add positional embeddings (one per patch, not per timestep)
+        print("Input projection output shape: ", x.shape)
+        # x.shape = (B, num_patches, d_model)
         positions = torch.arange(num_patches, device=x.device)
         x = x + self.pos_embedding(positions)
-        # x is still (32, 17, 128)
-
-        # Encoder blocks
         for block in self.encoder_blocks:
             x = block(x)
-
         x = self.norm(x)
-
+        print(f"Transformer output shape: {x.shape}")
+        # x.shape = (B, num_patches, d_model)
         # Global average pooling → (B, d_model)
         x = x.mean(dim=1)
-
-        return self.classifier(x)                      # (B, num_classes)
-
+        return self.classifier(x) # (B, num_classes)
 
 def build_model(
     input_length: int = 187,
@@ -166,7 +123,6 @@ def build_model(
     print(f"ECGformer | trainable params: {total:,}")
     return model.to(device)
 
-
 def build_criterion(y_train_numpy, device: str) -> nn.CrossEntropyLoss:
     """Weighted cross-entropy to handle class imbalance."""
     import numpy as np
@@ -175,10 +131,8 @@ def build_criterion(y_train_numpy, device: str) -> nn.CrossEntropyLoss:
     weights = weights / weights.sum()
     return nn.CrossEntropyLoss(weight=weights.to(device))
 
-
 def build_optimizer(model: ECGformer) -> torch.optim.Adam:
     return torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-7)
-
 
 def train_one_epoch(model, loader, optimizer, scheduler, device, criterion) -> float:
     model.train()
@@ -193,7 +147,6 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, criterion) -> f
         scheduler.step()
         total_loss += loss.item() * x_batch.size(0)
     return total_loss / len(loader.dataset)
-
 
 @torch.no_grad()
 def evaluate(model, loader, device, criterion) -> dict:
