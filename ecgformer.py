@@ -1,11 +1,30 @@
 import torch
 import torch.nn as nn
+import math
+
+def positionalencoding1d(d_model, length):
+    """
+    :param d_model: dimension of the model
+    :param length: length of positions
+    :return: length*d_model position matrix
+    """
+    if d_model % 2 != 0:
+        raise ValueError("Cannot use sin/cos positional encoding with "
+                         "odd dim (got dim={:d})".format(d_model))
+    pe = torch.zeros(length, d_model)
+    position = torch.arange(0, length).unsqueeze(1)
+    div_term = torch.exp((torch.arange(0, d_model, 2, dtype=torch.float) *
+                         -(math.log(10000.0) / d_model)))
+    pe[:, 0::2] = torch.sin(position.float() * div_term)
+    pe[:, 1::2] = torch.cos(position.float() * div_term)
+
+    return pe
 
 class ECGformerEncoderBlock(nn.Module):
     """
     Pre-LN Transformer encoder block (Fig. 2 in paper):
       LayerNorm → MultiHeadSelfAttention → residual
-      LayerNorm → FFN (d_model→128→64→d_model) → residual
+      LayerNorm → FFN (d_model→[mlp_units]→d_model) → residual
     """
     def __init__(self, d_model: int, num_heads: int, mlp_units: list, dropout: float):
         super().__init__()
@@ -47,8 +66,10 @@ class ECGformer(nn.Module):
         mlp_units: list = None,
         dropout: float = 0.15,
         num_classes: int = 5,
+        device: str = "cuda",
     ):
         super().__init__()
+        self.d_model = d_model
         if mlp_units is None:
             mlp_units = [128, 64]
 
@@ -56,11 +77,11 @@ class ECGformer(nn.Module):
             f"d_model ({d_model}) must be divisible by num_heads ({num_heads})"
 
         self.input_length = input_length
+        self.pos_encoding = positionalencoding1d(d_model, input_length // patch_size).to(device)
 
         self.patch_size = patch_size
         num_patches = input_length // patch_size  # e.g. 187 // 11 = 17 patches
         self.input_proj = nn.Linear(patch_size, d_model)
-        self.pos_embedding = nn.Embedding(num_patches, d_model)
 
         # Encoder stack
         self.encoder_blocks = nn.ModuleList([
@@ -90,14 +111,13 @@ class ECGformer(nn.Module):
         x = x[:, :num_patches * self.patch_size]
         x = x.view(B, num_patches, self.patch_size)
         x = self.input_proj(x)
-        print("Input projection output shape: ", x.shape)
+        # print("Input projection output shape: ", x.shape)
         # x.shape = (B, num_patches, d_model)
-        positions = torch.arange(num_patches, device=x.device)
-        x = x + self.pos_embedding(positions)
+        x = x + self.pos_encoding
         for block in self.encoder_blocks:
             x = block(x)
         x = self.norm(x)
-        print(f"Transformer output shape: {x.shape}")
+        # print(f"Transformer output shape: {x.shape}")
         # x.shape = (B, num_patches, d_model)
         # Global average pooling → (B, d_model)
         x = x.mean(dim=1)
@@ -107,17 +127,21 @@ def build_model(
     input_length: int = 187,
     num_classes: int = 5,
     patch_size: int = 17,
-    device: str = "cpu",
+    num_heads: int = 8,
+    mlp_units: list = [128, 64],
+    d_model: int = 128,
+    device: str = "cuda",
 ) -> ECGformer:
     model = ECGformer(
         input_length=input_length,
         patch_size=patch_size,
-        d_model=128,
-        num_heads=8,
+        d_model=d_model,
+        num_heads=num_heads,
         num_layers=4,
-        mlp_units=[128, 64],
+        mlp_units=mlp_units,
         dropout=0.15,
         num_classes=num_classes,
+        device=device,
     )
     total = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"ECGformer | trainable params: {total:,}")
