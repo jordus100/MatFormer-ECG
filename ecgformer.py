@@ -110,14 +110,17 @@ class ECGMatformer(nn.Module):
         # print("Input projection output shape: ", x.shape)
         # x.shape = (B, num_patches, d_model)
         x = x + self.pos_encoding
+        cls = torch.empty(B, 1, self.d_model).to(x.device)
+        nn.init.normal_(cls)
+        x = torch.cat((cls, x), 1)
         for block in self.encoder_blocks:
             x = block(x, matryoshka_granularity)
         x = self.norm(x)
         # print(f"Transformer output shape: {x.shape}")
         # x.shape = (B, num_patches, d_model)
         # Global average pooling → (B, d_model)
-        x = x.mean(dim=1)
-        return self.classifier(x) # (B, num_classes)
+        # x = x.mean(dim=1)
+        return self.classifier(x[:, 0, :]) # (B, num_classes)
 
 def build_criterion(y_train_numpy, device: str) -> nn.CrossEntropyLoss:
     """Weighted cross-entropy to handle class imbalance."""
@@ -138,6 +141,7 @@ def train_one_epoch(model, loader, optimizer, scheduler, device, criterion) -> f
         y_batch = y_batch.to(device, dtype=torch.long)
         optimizer.zero_grad()
         matryoshka_granularity = torch.randint(0, model.matryoshka_depth, (1,)).item()
+        # print(f"Training batch with matryoshka_granularity={matryoshka_granularity}")
         loss = criterion(model(x_batch, matryoshka_granularity), y_batch)
         loss.backward()
         optimizer.step()

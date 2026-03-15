@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 
+def print_grad(grad):
+    print(f"Number of zeros in the gradient: {(grad == 0).sum().item()} out of {grad.numel()}")
+
 class LinearMatryoshka(nn.Module):
 
     def __init__(self, in_size: int, out_size: int, matryoshka_depth: int, matryoshka_axis: int = 0, device="cuda"):
@@ -29,6 +32,7 @@ class LinearMatryoshka(nn.Module):
                 submodel.bias = self.main_model.bias[:i]
 
             self.submodels.append(submodel)
+        # self.main_model.weight.register_hook(print_grad)
 
     def forward(self, x: torch.Tensor, granularity: int) -> torch.Tensor:
         if granularity not in self.grans:
