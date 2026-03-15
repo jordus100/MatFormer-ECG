@@ -27,23 +27,31 @@ class ECGformerEncoderBlock(nn.Module):
       LayerNorm → MultiHeadSelfAttention → residual
       LayerNorm → FFN (d_model→d_ffn→d_model) → residual
     """
-    def __init__(self, d_model: int, num_heads: int, d_ffn, dropout: float, matryoshka_depth: int = 3):
+    def __init__(self, d_model: int, num_heads: int, d_ffn, dropout: float, matryoshka_depth: int = 3, device="cuda"):
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(
-            embed_dim=d_model,
-            num_heads=num_heads,
+        # self.attn = nn.MultiheadAttention(
+        #     embed_dim=d_model,
+        #     num_heads=num_heads,
+        #     dropout=dropout,
+        #     batch_first=True,
+        # )
+        self.attn = matformer.MultiHeadSelfAttentionMatryoshka(
+            E_q=d_model,
+            E_total=d_model,
+            nheads=num_heads,
+            matryoshka_depth=matryoshka_depth,
             dropout=dropout,
-            batch_first=True,
+            device=device
         )
         self.attn_drop = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(d_model)
-        self.ffn = nn.ModuleList([matformer.LinearMatryoshka(d_model, d_ffn, matryoshka_depth, 1), nn.ReLU(), nn.Dropout(dropout),
-        matformer.LinearMatryoshka(d_ffn, d_model, matryoshka_depth, 0), nn.Dropout(dropout)])
+        self.ffn = nn.ModuleList([matformer.LinearMatryoshka(d_model, d_ffn, matryoshka_depth, 1, device=device), nn.ReLU(), nn.Dropout(dropout),
+        matformer.LinearMatryoshka(d_ffn, d_model, matryoshka_depth, 0, device=device), nn.Dropout(dropout)])
 
     def forward(self, x: torch.Tensor, matryoshka_granularity) -> torch.Tensor:
         normed = self.norm1(x)
-        attn_out, _ = self.attn(normed, normed, normed)
+        attn_out = self.attn(normed, matryoshka_granularity)
         x = x + self.attn_drop(attn_out)
         x = self.norm2(x)
         for layer in self.ffn:
@@ -81,22 +89,15 @@ class ECGMatformer(nn.Module):
 
         # Encoder stack
         self.encoder_blocks = nn.ModuleList([
-            ECGformerEncoderBlock(d_model, num_heads, d_ffn, dropout, matryoshka_depth)
+            ECGformerEncoderBlock(d_model, num_heads, d_ffn, dropout, matryoshka_depth, device="cuda")
             for _ in range(num_layers)
         ])
 
         self.norm = nn.LayerNorm(d_model)
 
         # Classifier
-        self.classifier = nn.Linear(d_model, num_classes)
-
-        self._init_weights()
-
-    def _init_weights(self):
-        nn.init.xavier_uniform_(self.input_proj.weight)
-        nn.init.zeros_(self.input_proj.bias)
-        nn.init.xavier_uniform_(self.classifier.weight)
-        nn.init.zeros_(self.classifier.bias)
+        self.classifier1 = nn.Linear(d_model, d_model // 2)
+        self.classifier2 = nn.Linear(d_model // 2, num_classes)
 
     def forward(self, x: torch.Tensor, matryoshka_granularity) -> torch.Tensor:
         """
@@ -120,7 +121,8 @@ class ECGMatformer(nn.Module):
         # x.shape = (B, num_patches, d_model)
         # Global average pooling → (B, d_model)
         # x = x.mean(dim=1)
-        return self.classifier(x[:, 0, :]) # (B, num_classes)
+        x = self.classifier1(x[:, 0, :]) # (B, num_classes)
+        return self.classifier2(x)
 
 def build_criterion(y_train_numpy, device: str) -> nn.CrossEntropyLoss:
     """Weighted cross-entropy to handle class imbalance."""

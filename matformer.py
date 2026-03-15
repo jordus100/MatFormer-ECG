@@ -71,9 +71,9 @@ class MultiHeadSelfAttentionMatryoshka(nn.Module):
         super().__init__()
         self.nheads = nheads
         self.dropout = dropout
-        self.packed_proj = nn.LinearMatryoshka(E_q, E_total * 3, matryoshka_depth, 1, device=device)
+        self.packed_proj = LinearMatryoshka(E_q, E_total * 3, matryoshka_depth, 1, device=device)
         E_out = E_q
-        self.out_proj = nn.Linear(E_total, E_out, matryoshka_depth, 0, device=device)
+        self.out_proj = LinearMatryoshka(E_total, E_out, matryoshka_depth, 0, device=device)
         assert E_total % nheads == 0, "Embedding dim is not divisible by nheads"
         self.E_head = E_total // nheads
         self.bias = True
