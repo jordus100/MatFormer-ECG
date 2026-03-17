@@ -9,7 +9,7 @@ import pickle
 import ecgformer
 
 epochs = 100
-savepath = f"ecgmatformer_{str(datetime.now())}"
+savepath = f"ecgmatformer_{datetime.now().strftime('%b-%d-%H-%M')}"
 
 beats_x = np.load('/home/matrioszka/mit-bih/mitbih_beats_x.npy', allow_pickle=True)
 beats_y = np.load('/home/matrioszka/mit-bih/mitbih_beats_y.npy', allow_pickle=True)
@@ -94,6 +94,13 @@ for epoch in range(1, epochs):
     val_file = open(savepath+"_validation.pickle", "wb")
     pickle.dump(train_results, train_file)
     pickle.dump(val_results, val_file)
+
+torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': best_val_loss,
+            }, savepath+".tar")
 
 
 print(f"\nTraining complete. Best val loss: {best_val_loss:.4f}")
