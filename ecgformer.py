@@ -131,10 +131,10 @@ def build_optimizer(model: ECGMatformer) -> torch.optim.Adam:
 
 def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None) -> list[dict]:
     model.train()
-    mat_grans = [i for i in range(model.matryoshka_depth)][::-1]
-    loss = dict()
+    mat_grans = [i for i in range(model.matryoshka_depth)]
+    losses = dict()
     for gran in mat_grans:
-        loss[gran] = {"sum_loss": 0.0, "train_count": 0}
+        losses[gran] = {"sum_loss": 0.0, "train_count": 0}
     for x_batch, y_batch in loader:
         x_batch = x_batch.to(device, dtype=torch.float32)
         y_batch = y_batch.to(device, dtype=torch.long)
@@ -145,18 +145,19 @@ def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None)
         optimizer.step()
         if scheduler is not None:
             scheduler.step()
-        loss[mat_gran]["sum_loss"] += loss.item()
-        loss[mat_gran]["train_count"] += x_batch.size[0]
+        losses[mat_gran]["sum_loss"] += loss.item()
+        losses[mat_gran]["train_count"] += x_batch.size(0)
     results = []
     for gran in mat_grans:
-        results.append({"mat_gran": gran, "train_loss": loss[gran]["sum_loss"] / (loss[gran]["train_count"])})
+        results.append({"mat_gran": gran, "train_loss": losses[gran]["sum_loss"] / (losses[gran]["train_count"])})
     return results
 
 @torch.no_grad()
-def evaluate(model, loader, device, criterion) -> dict:
+def evaluate(model, loader, device, criterion) -> list:
     model.eval()
-    matryoshka_granularities = [i for i in range(model.matryoshka_depth)][::-1]
+    matryoshka_granularities = [i for i in range(model.matryoshka_depth)]
     total_loss, correct, total = 0.0, 0, 0
+    results = []
     for g in matryoshka_granularities:
         total_loss, correct, total = 0.0, 0, 0
         for x_batch, y_batch in loader:
@@ -166,6 +167,6 @@ def evaluate(model, loader, device, criterion) -> dict:
             total_loss += criterion(logits, y_batch).item() * x_batch.size(0)
             correct += (logits.argmax(dim=1) == y_batch).sum().item()
             total += x_batch.size(0)
-        print({"matryoshka_granularity": g, "loss": total_loss / total, "accuracy": correct / total})
+        results.append({"mat_gran": g, "val_loss": total_loss / total, "val_accuracy": correct / total})
 
-    return {"loss": total_loss / total, "accuracy": correct / total}
+    return results

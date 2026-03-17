@@ -3,7 +3,7 @@ import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-import datetime
+from datetime import datetime
 import pickle
 
 import ecgformer
@@ -79,18 +79,21 @@ for epoch in range(1, epochs):
     val_results.append(ecgformer.evaluate(model, test_loader, "cuda", criterion))
     # scheduler.step(val_loss)
     print(
-        f"Epoch [{epoch:3d}/{epochs}] "
+        f"\nEpoch [{epoch:3d}/{epochs}] "
     )
+    print("Training results:")
     print(train_results[-1])
+    print("Validation results:")
     print(val_results[-1])
 
-    if val_results[-1][0] < best_val_loss:
-        best_val_loss = val_results[-1][0]
+    if val_results[-1][0]["val_loss"] < best_val_loss:
+        best_val_loss = val_results[-1][0]["val_loss"]
         torch.save(model.state_dict(), savepath+".pth")
-        print(f"Saved best model → {savepath+'.pth'}")
-    train_file = open(savepath+"_train.pickle", "w")
-    val_file = open(savepath+"_validation.pickle", "w")
+        print(f"\nSaved best model → {savepath+'.pth'}")
+    train_file = open(savepath+"_train.pickle", "wb")
+    val_file = open(savepath+"_validation.pickle", "wb")
     pickle.dump(train_results, train_file)
     pickle.dump(val_results, val_file)
+
 
 print(f"\nTraining complete. Best val loss: {best_val_loss:.4f}")
