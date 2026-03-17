@@ -65,7 +65,7 @@ class ECGMatformer(nn.Module):
         dropout: float = 0.15,
         num_classes: int = 5,
         device: str = "cuda",
-        matryoshka_depth: int = 4,
+        matryoshka_depth: list = 4,
     ):
         super().__init__()
         self.d_model = d_model
@@ -93,10 +93,12 @@ class ECGMatformer(nn.Module):
         self.classifier1 = nn.Linear(d_model, d_model // 2)
         self.classifier2 = nn.Linear(d_model // 2, num_classes)
 
-    def forward(self, x: torch.Tensor, matryoshka_granularity) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mat_grans: list) -> torch.Tensor:
         """
         x: (batch, input_length) — zero-mean normalised ECG beat
         """
+        assert len(mat_grans) == len(self.encoder_blocks), \
+            "mat_gran list must be the same length as the number of encoder blocks"
         B, L = x.shape
         num_patches = L // self.patch_size
         x = x[:, :num_patches * self.patch_size]
@@ -108,8 +110,8 @@ class ECGMatformer(nn.Module):
         cls = torch.empty(B, 1, self.d_model).to(x.device)
         nn.init.normal_(cls)
         x = torch.cat((cls, x), 1)
-        for block in self.encoder_blocks:
-            x = block(x, matryoshka_granularity)
+        for idx, block in enumerate(self.encoder_blocks):
+            x = block(x, mat_grans[idx])
         x = self.norm(x)
         # print(f"Transformer output shape: {x.shape}")
         # x.shape = (B, num_patches, d_model)
@@ -140,7 +142,7 @@ def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None)
         y_batch = y_batch.to(device, dtype=torch.long)
         optimizer.zero_grad()
         mat_gran = torch.randint(0, model.matryoshka_depth, (1,)).item()
-        loss = criterion(model(x_batch, mat_gran), y_batch)
+        loss = criterion(model(x_batch, [mat_gran for g in range(len(model.encoder_blocks))]), y_batch)
         loss.backward()
         optimizer.step()
         if scheduler is not None:
