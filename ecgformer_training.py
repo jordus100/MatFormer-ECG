@@ -34,11 +34,12 @@ from torch.utils.data import DataLoader, TensorDataset
 import ecgformer
 import evaluate
 
-EPOCHS      = 100
+EPOCHS      = 200
 DEVICE      = "cuda"
 BATCH_SIZE  = 32
 DATA_X      = "/home/matrioszka/mit-bih/mitbih_beats_x.npy"
 DATA_Y      = "/home/matrioszka/mit-bih/mitbih_beats_y.npy"
+savepath = f"data/ecgmatformer_{datetime.now().strftime('%m-%d-%H:%M')}"
 
 MODEL_KWARGS = dict(
     input_length    = 150,
@@ -177,7 +178,7 @@ def run_evaluation(
             all_preds, all_labels = [], []
             for X_batch, y_batch in test_loader:
                 X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
-                outputs = model(X_batch, g)
+                outputs = model(X_batch, [g for _ in range(len(model.encoder_blocks))])
                 _, preds = torch.max(outputs, 1)
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(y_batch.cpu().numpy())

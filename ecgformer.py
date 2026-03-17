@@ -142,7 +142,7 @@ def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None)
         y_batch = y_batch.to(device, dtype=torch.long)
         optimizer.zero_grad()
         mat_gran = torch.randint(0, model.matryoshka_depth, (1,)).item()
-        loss = criterion(model(x_batch, [mat_gran for g in range(len(model.encoder_blocks))]), y_batch)
+        loss = criterion(model(x_batch, [mat_gran for _ in range(len(model.encoder_blocks))]), y_batch)
         loss.backward()
         optimizer.step()
         if scheduler is not None:
@@ -160,15 +160,15 @@ def evaluate(model, loader, device, criterion) -> list:
     matryoshka_granularities = [i for i in range(model.matryoshka_depth)]
     total_loss, correct, total = 0.0, 0, 0
     results = []
-    for g in matryoshka_granularities:
+    for mat_gran in matryoshka_granularities:
         total_loss, correct, total = 0.0, 0, 0
         for x_batch, y_batch in loader:
             x_batch = x_batch.to(device, dtype=torch.float32)
             y_batch = y_batch.to(device, dtype=torch.long)
-            logits = model(x_batch, g)
+            logits = model(x_batch, [mat_gran for _ in range(len(model.encoder_blocks))])
             total_loss += criterion(logits, y_batch).item() * x_batch.size(0)
             correct += (logits.argmax(dim=1) == y_batch).sum().item()
             total += x_batch.size(0)
-        results.append({"mat_gran": g, "val_loss": total_loss / total, "val_accuracy": correct / total})
+        results.append({"mat_gran": mat_gran, "val_loss": total_loss / total, "val_accuracy": correct / total})
 
     return results
