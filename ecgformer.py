@@ -30,12 +30,6 @@ class ECGformerEncoderBlock(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ffn, dropout: float, matryoshka_depth: int = 3, device="cuda"):
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model)
-        # self.attn = nn.MultiheadAttention(
-        #     embed_dim=d_model,
-        #     num_heads=num_heads,
-        #     dropout=dropout,
-        #     batch_first=True,
-        # )
         self.attn = matformer.MultiHeadSelfAttentionMatryoshka(
             E_q=d_model,
             E_total=d_model,
@@ -130,26 +124,33 @@ def build_criterion(y_train_numpy, device: str) -> nn.CrossEntropyLoss:
     counts = np.bincount(y_train_numpy)
     weights = torch.tensor(1.0 / counts, dtype=torch.float32)
     weights = weights / weights.sum()
-    return nn.CrossEntropyLoss(weight=weights.to(device))
+    return nn.CrossEntropyLoss(weight=weights.to(device), reduction='sum')
 
 def build_optimizer(model: ECGMatformer) -> torch.optim.Adam:
     return torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-7)
 
-def train_one_epoch(model, loader, optimizer, scheduler, device, criterion) -> float:
+def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None) -> list[dict]:
     model.train()
-    total_loss = 0.0
+    mat_grans = [i for i in range(model.matryoshka_depth)][::-1]
+    loss = dict()
+    for gran in mat_grans:
+        loss[gran] = {"sum_loss": 0.0, "train_count": 0}
     for x_batch, y_batch in loader:
         x_batch = x_batch.to(device, dtype=torch.float32)
         y_batch = y_batch.to(device, dtype=torch.long)
         optimizer.zero_grad()
-        matryoshka_granularity = torch.randint(0, model.matryoshka_depth, (1,)).item()
-        # print(f"Training batch with matryoshka_granularity={matryoshka_granularity}")
-        loss = criterion(model(x_batch, matryoshka_granularity), y_batch)
+        mat_gran = torch.randint(0, model.matryoshka_depth, (1,)).item()
+        loss = criterion(model(x_batch, mat_gran), y_batch)
         loss.backward()
         optimizer.step()
-        scheduler.step()
-        total_loss += loss.item() * x_batch.size(0)
-    return total_loss / len(loader.dataset)
+        if scheduler is not None:
+            scheduler.step()
+        loss[mat_gran]["sum_loss"] += loss.item()
+        loss[mat_gran]["train_count"] += x_batch.size[0]
+    results = []
+    for gran in mat_grans:
+        results.append({"mat_gran": gran, "train_loss": loss[gran]["sum_loss"] / (loss[gran]["train_count"])})
+    return results
 
 @torch.no_grad()
 def evaluate(model, loader, device, criterion) -> dict:
