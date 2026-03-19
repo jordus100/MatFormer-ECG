@@ -1,24 +1,3 @@
-#!/usr/bin/env python3
-"""
-ECGMatformer — training and/or evaluation script.
-
-Usage:
-    # Train (and save best model + pickle logs)
-    python ecgmatformer_train.py --mode train
-
-    # Evaluate a saved model and plot confusion matrices + bar charts
-    python ecgmatformer_train.py --mode eval --name ecgmatformer_Apr-01-12-00
-
-    # Train then immediately evaluate
-    python ecgmatformer_train.py --mode both
-
-    # Optional flags (all modes):
-    --output-dir ./results      save plots/pickles here (default: current dir)
-    --no-show                   skip interactive matplotlib windows
-    --smooth-window 10          apply rolling average to training plots
-"""
-
-import argparse
 import pickle
 import sys
 from datetime import datetime
@@ -34,7 +13,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import ecgformer
 import evaluate
 
-EPOCHS      = 200
+EPOCHS      = 400
 DEVICE      = "cuda"
 BATCH_SIZE  = 32
 DATA_X      = "/home/matrioszka/mit-bih/mitbih_beats_x.npy"
@@ -86,7 +65,7 @@ def load_data() -> tuple[DataLoader, DataLoader, LabelEncoder]:
     )
     return train_loader, test_loader, le
 
-def run_training(savepath: str, output_dir: Path, smooth_window: int | None, show: bool):
+def run_training(savepath: str):
     train_loader, test_loader, le = load_data()
 
     # ── class-weighted loss ──
@@ -152,7 +131,6 @@ def run_evaluation(
     name: str,
     model: ecgformer.ECGMatformer | None,
     test_loader: DataLoader | None,
-    output_dir: Path,
     show: bool,
 ):
     # load data + model if coming from --mode eval
@@ -194,76 +172,13 @@ def run_evaluation(
             print(f"\nMatryoshka Granularity: {g}")
             print(classification_report(all_labels, all_preds, target_names=target_names))
 
-    evaluate.plot_evaluation(name, results, output_dir, show)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+    evaluate.plot_evaluation(name, results, show)
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="ECGMatformer — train and/or evaluate with plots."
+    savepath = str(output_dir / f"ecgmatformer_{datetime.now().strftime('%b-%d-%H-%M')}")
+    model, test_loader, _ = run_training(
+        savepath     = savepath,
     )
-    parser.add_argument(
-        "--mode", choices=["train", "eval", "both"], default="both",
-        help="train: run training loop;  eval: load saved model and plot results;  both: train then eval",
-    )
-    parser.add_argument(
-        "--name", default=None,
-        help="Base name for loading files in eval mode (e.g. 'ecgmatformer_Apr-01-12-00'). "
-             "Auto-generated from timestamp in train/both mode.",
-    )
-    parser.add_argument(
-        "--output-dir", default=".", metavar="DIR",
-        help="Directory to save all output files (default: current dir)",
-    )
-    parser.add_argument(
-        "--smooth-window", type=int, default=None, metavar="N",
-        help="Rolling-average window for training curve plots",
-    )
-    parser.add_argument(
-        "--no-show", action="store_true",
-        help="Skip interactive matplotlib windows; only save files",
-    )
-    args = parser.parse_args()
-
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    show = not args.no_show
-
-    if args.smooth_window is not None and args.smooth_window < 2:
-        print("ERROR: --smooth-window must be at least 2", file=sys.stderr)
-        sys.exit(1)
-
-    if args.mode in ("train", "both"):
-        savepath = str(output_dir / f"ecgmatformer_{datetime.now().strftime('%b-%d-%H-%M')}")
-        model, test_loader, _ = run_training(
-            savepath     = savepath,
-            output_dir   = output_dir,
-            smooth_window= args.smooth_window,
-            show         = show,
-        )
-        if args.mode == "both":
-            run_evaluation(
-                name        = savepath,
-                model       = model,
-                test_loader = test_loader,
-                output_dir  = output_dir,
-                show        = show,
-            )
-
-    elif args.mode == "eval":
-        if args.name is None:
-            print("ERROR: --name is required for --mode eval", file=sys.stderr)
-            sys.exit(1)
-        run_evaluation(
-            name        = args.name,
-            model       = None,
-            test_loader = None,
-            output_dir  = output_dir,
-            show        = show,
-        )
-
 
 if __name__ == "__main__":
     main()

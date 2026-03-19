@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""
-Plot ML training and validation results from Matryoshka model training.
-
-Usage:
-    python plot_training.py <name>
-    python plot_training.py <name> --output-dir ./plots
-    python plot_training.py <name> --no-show
-
-Expects:
-    <name>_train.pickle      - list of dicts with keys: mat_gran, train_loss
-    <name>_validation.pickle - list of dicts with keys: mat_gran, val_loss, val_accuracy
-"""
-
-import argparse
 import pickle
 import sys
 from collections import defaultdict
@@ -21,9 +6,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
-
-
-# ── Styling ──────────────────────────────────────────────────────────────────
 
 STYLE = {
     "figure.facecolor":  "#0f1117",
@@ -56,10 +38,8 @@ GRAN_COLOURS = [
     "#ff7b72",  # 7 – coral
 ]
 
-
 def colour_for(gran: int) -> str:
     return GRAN_COLOURS[gran % len(GRAN_COLOURS)]
-
 
 def moving_average(values: list[float], window: int) -> tuple[np.ndarray, np.ndarray]:
     """Return (indices, smoothed_values) using a centred moving average.
@@ -72,13 +52,9 @@ def moving_average(values: list[float], window: int) -> tuple[np.ndarray, np.nda
     indices = np.arange(half, half + len(smoothed))  # 0-based
     return indices, smoothed
 
-
-# ── Data loading ──────────────────────────────────────────────────────────────
-
 def load_pickle(path: Path) -> list:
     with open(path, "rb") as f:
         return pickle.load(f)
-
 
 def organise_train(records: list[list[dict]]) -> dict[int, list[float]]:
     """
@@ -90,7 +66,6 @@ def organise_train(records: list[list[dict]]) -> dict[int, list[float]]:
         for entry in epoch_data:
             gran_losses[entry["mat_gran"]].append(entry["train_loss"])
     return dict(gran_losses)
-
 
 def organise_val(records: list[list[dict]]) -> tuple[dict, dict]:
     """
@@ -105,12 +80,8 @@ def organise_val(records: list[list[dict]]) -> tuple[dict, dict]:
             gran_acc[g].append(entry["val_accuracy"])
     return dict(gran_loss), dict(gran_acc)
 
-
-# ── Plotting helpers ──────────────────────────────────────────────────────────
-
 def _epoch_axis(n: int) -> np.ndarray:
     return np.arange(1, n + 1)
-
 
 def _style_ax(ax, title: str, xlabel: str, ylabel: str):
     ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
@@ -154,9 +125,10 @@ def plot_train(name: str, train_data: dict[int, list[float]], output_dir: Path, 
         _style_ax(ax, "", "Epoch", "Loss")
         fig.tight_layout()
 
-        out = output_dir / f"{name}_train_loss.png"
-        fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
-        print(f"  saved → {out}")
+        if output_dir is not None:
+            out = output_dir / f"{name}_train_loss.png"
+            fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+            print(f"  saved → {out}")
         if show:
             plt.show()
         plt.close(fig)
@@ -190,68 +162,33 @@ def plot_val(name: str,
 
         fig.tight_layout()
 
-        out = output_dir / f"{name}_validation.png"
-        fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
-        print(f"  saved → {out}")
+        if output_dir is not None:
+            out = output_dir / f"{name}_validation.png"
+            fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+            print(f"  saved → {out}")
         if show:
             plt.show()
         plt.close(fig)
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Plot Matryoshka model training & validation results."
-    )
-    parser.add_argument("name", help="Base name used in <name>_train.pickle / <name>_validation.pickle")
-    parser.add_argument("--output-dir", default=".", metavar="DIR",
-                        help="Directory to save plots (default: current dir)")
-    parser.add_argument("--smooth-window", type=int, default=None, metavar="N",
-                        help="Rolling average window size (odd number recommended). "
-                             "Raw data shown faintly underneath.")
-    parser.add_argument("--no-show", action="store_true",
-                        help="Skip interactive display; only save files")
-    args = parser.parse_args()
-
-    name         = args.name
-    output_dir   = Path(args.output_dir)
-    show         = not args.no_show
-    smooth_window = args.smooth_window
-
+def plot_results(name, show, smooth_window):
     if smooth_window is not None and smooth_window < 2:
         print("ERROR: --smooth-window must be at least 2", file=sys.stderr)
         sys.exit(1)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     train_path = Path(f"{name}_train.pickle")
     val_path   = Path(f"{name}_validation.pickle")
-
     missing = [p for p in (train_path, val_path) if not p.exists()]
     if missing:
         for p in missing:
             print(f"ERROR: file not found: {p}", file=sys.stderr)
         sys.exit(1)
-
     print(f"Loading {train_path} …")
     raw_train = load_pickle(train_path)
     print(f"Loading {val_path} …")
     raw_val   = load_pickle(val_path)
-
     train_data          = organise_train(raw_train)
     val_loss, val_acc   = organise_val(raw_val)
-
     n_epochs = len(next(iter(train_data.values())))
     grans    = sorted(set(train_data) | set(val_loss))
     print(f"  epochs={n_epochs}  granularities={grans}")
-
-    print("Plotting …")
-    plot_train(name, train_data, output_dir, show, smooth_window)
-    plot_val(name, val_loss, val_acc, output_dir, show, smooth_window)
-
-    print("Done.")
-
-
-if __name__ == "__main__":
-    main()
+    plot_train(name, train_data, None, show, smooth_window)
+    plot_val(name, val_loss, val_acc, None, show, smooth_window)

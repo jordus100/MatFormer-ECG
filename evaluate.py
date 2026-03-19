@@ -30,7 +30,7 @@ def colour_for(gran: int) -> str:
     return GRAN_COLOURS[gran % len(GRAN_COLOURS)]
 
 
-def plot_evaluation(name: str, results: dict, output_dir: Path, show: bool):
+def plot_evaluation(name: str, results: dict, show: bool):
     granularities = sorted(results.keys())
     n = len(granularities)
 
@@ -44,7 +44,7 @@ def plot_evaluation(name: str, results: dict, output_dir: Path, show: bool):
         # ── 1. Confusion matrices — one per granularity (individual files) ──
         for g in granularities:
             cm = results[g]["cm"]
-            _plot_single_cm(name, g, cm, classes, output_dir, show)
+            _plot_single_cm(name, g, cm, classes, show)
 
         # ── 2. Confusion matrices — all in a grid (single file) ──
         cols = min(n, 4)
@@ -59,7 +59,7 @@ def plot_evaluation(name: str, results: dict, output_dir: Path, show: bool):
         for j in range(i + 1, len(axes)):
             axes[j].set_visible(False)
         fig.tight_layout()
-        _save(fig, output_dir / f"{name}_confusion_matrices_grid.png", show)
+        plt.show()
 
         # ── 3. Per-class bar charts: F1, Precision, Recall ──
         metrics = [
@@ -74,7 +74,7 @@ def plot_evaluation(name: str, results: dict, output_dir: Path, show: bool):
             fig.suptitle(f"{name}  ·  {metric_label} per Class",
                          fontsize=14, fontweight="bold", color="#f0f6fc", y=1.01)
             fig.tight_layout()
-            _save(fig, output_dir / f"{name}_{metric_key.replace('-','_')}_per_class.png", show)
+            plt.show()
 
         # ── 4. Accuracy per granularity ──
         fig, ax = plt.subplots(figsize=(max(5, n * 1.4), 5))
@@ -97,8 +97,7 @@ def plot_evaluation(name: str, results: dict, output_dir: Path, show: bool):
         fig.suptitle(f"{name}  ·  Accuracy per Granularity",
                      fontsize=14, fontweight="bold", color="#f0f6fc", y=1.01)
         fig.tight_layout()
-        _save(fig, output_dir / f"{name}_accuracy_per_granularity.png", show)
-
+        plt.show()
 
 def _draw_cm(ax, cm: np.ndarray, classes: list[str], title: str):
     """Draw a single confusion matrix onto an axes object."""
@@ -119,16 +118,14 @@ def _draw_cm(ax, cm: np.ndarray, classes: list[str], title: str):
                     ha="center", va="center", fontsize=7,
                     color="white" if cm_norm[i, j] > thresh else "#c9d1d9")
 
-
-def _plot_single_cm(name, g, cm, classes, output_dir, show):
+def _plot_single_cm(name, g, cm, classes, show):
     fig, ax = plt.subplots(figsize=(max(5, len(classes) * 1.1 + 1),
                                     max(4, len(classes) * 1.0 + 1)))
     fig.suptitle(f"{name}  ·  Confusion Matrix  —  Granularity {g}",
                  fontsize=13, fontweight="bold", color="#f0f6fc", y=1.01)
     _draw_cm(ax, cm, classes, "")
     fig.tight_layout()
-    _save(fig, output_dir / f"{name}_confusion_matrix_gran{g}.png", show)
-
+    plt.show()
 
 def _plot_per_class_bars(ax, results, granularities, classes,
                          metric_key, metric_label):
@@ -156,13 +153,4 @@ def _plot_per_class_bars(ax, results, granularities, classes,
     ax.grid(True, axis="y", linestyle="--", alpha=0.5, zorder=0)
     ax.legend(title="Granularity", title_fontsize=9, fontsize=9,
               loc="upper right", framealpha=0.6)
-
-
-def _save(fig, path: Path, show: bool):
-    fig.savefig(path, dpi=150, bbox_inches="tight",
-                facecolor=fig.get_facecolor())
-    print(f"  saved → {path}")
-    if show:
-        plt.show()
-    plt.close(fig)
 
