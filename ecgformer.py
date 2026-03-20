@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import math
 import matformer
+import random
 
 def positionalencoding1d(d_model, length):
     """
@@ -153,6 +154,24 @@ def train_one_epoch(model, loader, optimizer, device, criterion, scheduler=None)
     for gran in mat_grans:
         results.append({"mat_gran": gran, "train_loss": losses[gran]["sum_loss"] / (losses[gran]["train_count"])})
     return results
+
+def train_one_epoch_mixed(model, loader, optimizer, device, criterion, mixes, scheduler=None) -> dict:
+    model.train()
+    train_loss = 0.0
+    train_count = 0
+    for x_batch, y_batch in loader:
+        x_batch = x_batch.to(device, dtype=torch.float32)
+        y_batch = y_batch.to(device, dtype=torch.long)
+        optimizer.zero_grad()
+        loss = criterion(model(x_batch, random.choice(mixes)), y_batch)
+        loss.backward()
+        optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
+        train_loss += loss.item()
+        train_count += x_batch.size(0)
+
+    return {"train_loss": train_loss / train_count}
 
 @torch.no_grad()
 def evaluate(model, loader, device, criterion) -> list:

@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
+import random
 import numpy as np
 import torch
 from sklearn.metrics import classification_report, confusion_matrix
@@ -66,7 +66,21 @@ def load_data() -> tuple[DataLoader, DataLoader, LabelEncoder]:
     )
     return train_loader, test_loader, le
 
-def run_training(savepath: str):
+def mat_combinations(depth, num_layers):
+    combinations = []
+    for i in range(num_layers):
+        added = []
+        for j in range(depth):
+            if len(combinations) == 0:
+                added.append([j])
+            else:
+                for comb in combinations:
+                    if j == comb[-1] or comb[-1] - j == 1:
+                        added.append(comb + [j])
+        combinations = added
+    return combinations
+
+def run_training(savepath: str, mix_layers: bool):
     train_loader, test_loader, le = load_data()
     criterion = get_criterion(train_loader)
 
@@ -81,9 +95,15 @@ def run_training(savepath: str):
     val_results    = []
 
     for epoch in range(1, EPOCHS):
-        train_results.append(
-            ecgformer.train_one_epoch(model, train_loader, optimizer, DEVICE, criterion)
-        )
+        if mix_layers:
+            mixes = mat_combinations(model.matryoshka_depth, model.num_layers)
+            train_results.append(
+                ecgformer.train_one_epoch_mixed(model, train_loader, optimizer, DEVICE, criterion, mixes)
+            )
+        else:
+            train_results.append(
+                ecgformer.train_one_epoch(model, train_loader, optimizer, DEVICE, criterion)
+            )
         val_results.append(
             ecgformer.evaluate(model, test_loader, DEVICE, criterion)
         )
@@ -179,9 +199,10 @@ def run_evaluation(
     evaluate.plot_evaluation(name, results, show)
 
 def main():
-    savepath = str(output_dir / f"ecgmatformer_{datetime.now().strftime('%b-%d-%H-%M')}")
+    savepath = f"data/ecgmatformer_mixed_{datetime.now().strftime('%b-%d-%H-%M')}"
     model, test_loader, _ = run_training(
         savepath     = savepath,
+        mix_layers = True
     )
 
 if __name__ == "__main__":
