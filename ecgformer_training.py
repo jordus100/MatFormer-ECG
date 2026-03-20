@@ -2,6 +2,7 @@ import pickle
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -67,16 +68,7 @@ def load_data() -> tuple[DataLoader, DataLoader, LabelEncoder]:
 
 def run_training(savepath: str):
     train_loader, test_loader, le = load_data()
-
-    # ── class-weighted loss ──
-    y_train_all = train_loader.dataset.tensors[1].numpy()
-    class_counts  = np.bincount(y_train_all)
-    class_weights = 1.0 / class_counts
-    class_weights /= class_weights.sum()
-    print(f"Class weights: {class_weights}")
-    criterion = torch.nn.CrossEntropyLoss(
-        weight=torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
-    )
+    criterion = get_criterion(train_loader)
 
     model = ecgformer.ECGMatformer(**MODEL_KWARGS).to(DEVICE)
     total = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -125,6 +117,18 @@ def run_training(savepath: str):
     print(f"\nTraining complete. Best val loss: {best_val_loss:.4f}")
 
     return model, test_loader, le
+
+
+def get_criterion(train_loader) -> Any:
+    y_train_all = train_loader.dataset.tensors[1].numpy()
+    class_counts = np.bincount(y_train_all)
+    class_weights = 1.0 / class_counts
+    class_weights /= class_weights.sum()
+    print(f"Class weights: {class_weights}")
+    criterion = torch.nn.CrossEntropyLoss(
+        weight=torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
+    )
+    return criterion
 
 
 def run_evaluation(

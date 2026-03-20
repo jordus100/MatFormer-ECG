@@ -172,3 +172,18 @@ def evaluate(model, loader, device, criterion) -> list:
         results.append({"mat_gran": mat_gran, "val_loss": total_loss / total, "val_accuracy": correct / total})
 
     return results
+
+@torch.no_grad()
+def evaluate_mix(model, loader, device, criterion, mat_mix) -> dict:
+    assert len(mat_mix) == model.matryoshka_depth
+    model.eval()
+    total_loss, correct, total = 0.0, 0, 0
+    for x_batch, y_batch in loader:
+        x_batch = x_batch.to(device, dtype=torch.float32)
+        y_batch = y_batch.to(device, dtype=torch.long)
+        logits = model(x_batch, mat_mix)
+        total_loss += criterion(logits, y_batch).item() * x_batch.size(0)
+        correct += (logits.argmax(dim=1) == y_batch).sum().item()
+        total += x_batch.size(0)
+
+    return {"mat_mix": mat_mix, "val_loss": total_loss / total, "val_accuracy": correct / total}
